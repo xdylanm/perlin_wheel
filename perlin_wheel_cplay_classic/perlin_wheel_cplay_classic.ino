@@ -18,8 +18,8 @@ int speedV = 10;
 int scaleV = 50;
 
 float colorStart = 0;     
-float colorRange = .7;  //Range of each section of color 1 = 100%
-float colorSpeed = .1;    //Speed of color cycling
+float colorRange = .7;    //Range of each section of color 1 = 100%
+float colorSpeed = .2;    //Speed of color cycling
 int colorMax = 255;
 
 String mode = "none"; // options 1: normal, 2: complementary, 3: triad
@@ -58,11 +58,11 @@ void fillnoise()
 
   for (int i = 0; i < NUM_LEDS; i++)
   {
-    int noiseValH = inoise8(x + xOffsets[i] * scaleH, y + yOffsets[i] * scaleH, zH);
-    int noiseValS = inoise8(x + xOffsets[i] * scaleS, y + yOffsets[i] * scaleS, zS);
-    int noiseValV = inoise8(x + xOffsets[i] * scaleV, y + yOffsets[i] * scaleS, zV);
+    // signed on range from approx -70 to 70
+    int8_t noiseValH = inoise8_raw(x + xOffsets[i] * scaleH, y + yOffsets[i] * scaleH, zH);
 
-    int hue = (int) (noiseValH * colorRange + colorStart);
+    // expand to 16 bit signed
+    int16_t hue = (int16_t)(noiseValH * (256. * colorRange) + colorStart); // (int) (noiseValH * colorRange + colorStart);
     if (mode=="TRIAD"){
       if (noiseValH > colorMax * 5 / 8) {
         hue = hue + colorMax * 2 / 3 - colorMax * colorRange * 5 / 8;
@@ -75,12 +75,16 @@ void fillnoise()
         hue = hue + colorMax / 2 - colorMax * colorRange / 2;
       } 
     }
-    hue = hue % colorMax;
+    //hue = hue % colorMax;
+
+    // results scaled on 0-255
+    uint8_t noiseValS = inoise8(x + xOffsets[i] * scaleS, y + yOffsets[i] * scaleS, zS);
+    uint8_t noiseValV = inoise8(x + xOffsets[i] * scaleV, y + yOffsets[i] * scaleS, zV);
+
+    uint8_t saturation = noiseValS/2 + 127; //constrain(noiseValS + 70, 0, 255);
+    uint8_t value = 0xF8 & (noiseValV / 2 + 96); //1 << ((noiseValV/2 + 127) >> 5); //constrain(noiseValV - 20, 0, 255);
     
-    int saturation = constrain(noiseValS + 70, 0, 255);
-    int value = constrain(noiseValV - 20, 0, 255);
-    
-    leds[i] = CircuitPlayground.strip.ColorHSV(hue, saturation, value);
+    leds[i] = CircuitPlayground.strip.gamma32(CircuitPlayground.strip.ColorHSV(hue, saturation, value));
     CircuitPlayground.strip.setPixelColor(i,leds[i]);
   }
 
@@ -92,9 +96,32 @@ void fillnoise()
   x += speedS / 8;
   y -= speedS / 16;
   
-  colorStart += colorSpeed;
-  if (colorStart > colorMax) { colorStart -= colorMax; }
+  //colorStart += colorSpeed;
+  //if (colorStart > colorMax) { colorStart -= colorMax; }
 
+}
+
+bool leftButtonClick()
+{
+  if (CircuitPlayground.leftButton()) {
+    do {
+      delay(20);
+    } while (CircuitPlayground.leftButton());
+    return true;
+  }
+  return false;
+}
+
+
+bool rightButtonClick()
+{
+  if (CircuitPlayground.rightButton()) {
+    do {
+      delay(20);
+    } while (CircuitPlayground.rightButton());
+    return true;
+  }
+  return false;
 }
 
 
@@ -105,4 +132,15 @@ void loop()
   CircuitPlayground.strip.show();
 
   delay(20);
+
+  if (rightButtonClick()) {
+    colorStart += 4096;
+  } else if (leftButtonClick()) {
+    colorStart -= 4096;
+  }
+  if (colorStart < -32767) {
+    colorStart += 65535;
+  } else if (colorStart > 32767) {
+    colorStart -= 65535;
+  }
 }
